@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MBCV Process RMSE Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0B0F1A;
+  --surface: #131926;
+  --surface2: #1A2235;
+  --border: #2A3450;
+  --text: #E2E8F0;
+  --muted: #8896AB;
+  --accent: #14B8A6;
+  --pass: #22C55E;
+  --fail: #EF4444;
+  --warn: #F59E0B;
+  --pass-bg: rgba(34,197,94,0.08);
+  --fail-bg: rgba(239,68,68,0.08);
+  --warn-bg: rgba(245,158,11,0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
+.container { max-width: 1240px; margin: 0 auto; padding: 2rem 1.5rem; }
+h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+.subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; }
+.grid { display: grid; grid-template-columns: 340px 1fr; gap: 2rem; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; position: sticky; top: 1rem; }
+.panel h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 1rem; font-weight: 700; }
+.control { margin-bottom: 1.1rem; }
+.control label { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.35rem; }
+.control label .val { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--text); font-weight: 500; }
+input[type="range"] { width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: var(--border); border-radius: 3px; outline: none; cursor: pointer; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: var(--accent); border-radius: 50%; cursor: pointer; border: 2px solid var(--bg); }
+input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--accent); border-radius: 50%; cursor: pointer; border: 2px solid var(--bg); }
+
+.results { display: flex; flex-direction: column; gap: 1.5rem; }
+.result-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.result-card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 1rem; }
+
+.big-number { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.big-number .num { font-family: 'JetBrains Mono', monospace; font-size: 2.5rem; font-weight: 700; letter-spacing: -0.02em; }
+.big-number .unit { font-size: 1rem; color: var(--muted); }
+.pass-text { color: var(--pass); }
+.fail-text { color: var(--fail); }
+.warn-text { color: var(--warn); }
+
+.breakdown-row { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
+.breakdown-row:first-of-type { border-top: none; }
+.breakdown-row .label { color: var(--muted); }
+.breakdown-row .value { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+
+.bar-container { display: flex; height: 28px; border-radius: 6px; overflow: hidden; margin: 0.75rem 0; background: var(--surface2); }
+.bar-segment { display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 500; font-family: 'JetBrains Mono', monospace; transition: width 0.3s ease; min-width: 0; overflow: hidden; white-space: nowrap; }
+.bar-legend { display: flex; gap: 1.25rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--muted); }
+.bar-legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.4rem; vertical-align: middle; }
+.bar-legend .samp::before { background: #3B82F6; }
+.bar-legend .tool::before { background: var(--accent); }
+.bar-legend .remain::before { background: var(--surface2); }
+
+.matrix-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; font-family: 'JetBrains Mono', monospace; }
+.matrix-table th { background: var(--surface2); color: var(--muted); font-weight: 500; padding: 0.55rem 0.4rem; text-align: center; font-size: 0.78rem; border: 1px solid var(--border); }
+.matrix-table td { padding: 0.45rem; text-align: center; border: 1px solid var(--border); font-weight: 500; transition: background 0.2s; }
+.matrix-table td.pass { background: var(--pass-bg); color: var(--pass); }
+.matrix-table td.fail { background: var(--fail-bg); color: var(--fail); }
+.matrix-table td.header-cell { background: var(--surface2); color: var(--muted); font-weight: 500; text-align: left; }
+.matrix-table td.active-row { border-left: 2px solid var(--accent); }
+
+.tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.tag-pass { background: rgba(34,197,94,0.15); color: var(--pass); }
+.tag-fail { background: rgba(239,68,68,0.15); color: var(--fail); }
+
+.formula-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.8; color: var(--muted); margin: 0.75rem 0; overflow-x: auto; }
+.formula-block .hl { color: var(--accent); font-weight: 500; }
+.formula-block .val-hl { color: var(--text); font-weight: 700; }
+
+.divider { height: 1px; background: var(--border); margin: 0.5rem 0; }
+
+.warning-box { background: var(--warn-bg); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--warn); margin-top: 0.75rem; display: none; }
+
+.note { font-size: 0.82rem; color: var(--muted); margin-top: 0.75rem; padding-left: 0.75rem; border-left: 2px solid var(--border); line-height: 1.5; }
+.section-sep { margin-top: 1.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>MBCV Process RMSE Calculator</h1>
+  <p class="subtitle">Total process error sensitivity analysis. All errors in absolute terms (percentage points).</p>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Process Target</h2>
+      <div class="control">
+        <label>Confidence Level (CI) <span class="val" id="cl-val">95%</span></label>
+        <input type="range" id="cl" min="80" max="99" step="1" value="95">
+      </div>
+      <div class="control">
+        <label>MoE Target <span class="val" id="moe-val">&plusmn;5.0%</span></label>
+        <input type="range" id="moe" min="1" max="15" step="0.5" value="5">
+      </div>
+
+      <h2 class="section-sep">Sample</h2>
+      <div class="control">
+        <label>Bean Count (n) <span class="val" id="bc-val">833 beans (~50g)</span></label>
+        <input type="range" id="bc" min="100" max="5000" step="1" value="833">
+      </div>
+      <div class="control">
+        <label>Avg Bean Weight <span class="val" id="abw-val">60 mg</span></label>
+        <input type="range" id="abw" min="40" max="80" step="1" value="60">
+      </div>
+      <div class="control">
+        <label>Design Effect (D) <span class="val" id="de-val">1.0</span></label>
+        <input type="range" id="de" min="1.0" max="3.0" step="0.1" value="1.0">
+      </div>
+      <p class="note" style="border:none; padding:0; font-size:0.75rem; color:var(--muted); margin-top:-0.5rem; margin-bottom:0.75rem">
+        D = 1.0 means a perfectly random sample. D > 1 means beans are spatially or temporally correlated (e.g., scooped from one spot), reducing effective n.
+      </p>
+      <div class="control">
+        <label>Bean Wt. Variability <span class="val" id="bv-val">&plusmn;0%</span></label>
+        <input type="range" id="bv" min="0" max="30" step="1" value="0">
+      </div>
+      <p class="note" style="border:none; padding:0; font-size:0.75rem; color:var(--muted); margin-top:-0.5rem">
+        If sampling by weight, defective beans weigh less than good beans. Higher variability means more beans per gram, increasing actual n above the assumed count.
+      </p>
+
+      <h2 class="section-sep">Lot &amp; Model</h2>
+      <div class="control">
+        <label>Assumed Defect Rate (p) <span class="val" id="dr-val">12%</span></label>
+        <input type="range" id="dr" min="1" max="50" step="1" value="12">
+      </div>
+      <p class="note" style="border:none; padding:0; font-size:0.75rem; color:var(--muted); margin-top:-0.5rem; margin-bottom:0.75rem">
+        The estimated true proportion of defective beans in the lot.
+      </p>
+      <div class="control">
+        <label>Overall Model Accuracy <span class="val" id="ma-val">98%</span></label>
+        <input type="range" id="ma" min="50" max="99" step="1" value="98">
+      </div>
+      <p class="note" style="border:none; padding:0; font-size:0.75rem; color:var(--muted); margin-top:-0.5rem">
+        Weighted average classification accuracy across all defect types. Per defect accuracy varies by difficulty tier.
+      </p>
+    </div>
+
+    <div class="results">
+
+      <div class="result-card">
+        <h3>Process MoE vs. Target</h3>
+        <div class="big-number">
+          <span class="num" id="moe-num">&plusmn;3.8%</span>
+          <span class="unit">process MoE</span>
+          <span class="tag tag-pass" id="verdict-tag">PASS</span>
+        </div>
+        <div id="formula-live" class="formula-block"></div>
+        <div class="warning-box" id="accuracy-warning">
+          Model accuracy is below 70%. The process MoE may appear acceptable at defect rates near 50%, but per bean classifications are unreliable. Aggregate proportion accuracy at this level is coincidental, not meaningful.
+        </div>
+      </div>
+
+      <div class="result-card">
+        <h3 id="budget-title">Error Budget Allocation</h3>
+        <div class="bar-container" id="budget-bar"></div>
+        <div class="bar-legend">
+          <span class="samp">Sampling</span>
+          <span class="tool">Tool</span>
+          <span class="remain">Remaining</span>
+        </div>
+      </div>
+
+      <div class="result-card">
+        <h3>Component Breakdown</h3>
+        <div id="breakdown"></div>
+      </div>
+
+      <div class="result-card">
+        <h3 id="matrix-title">Tradeoff Matrix</h3>
+        <p class="note" style="border:none;padding:0;margin-bottom:0.75rem">Bean count vs. model accuracy. Green = pass, red = fail. Current selection highlighted.</p>
+        <div style="overflow-x:auto">
+          <table class="matrix-table" id="matrix"></table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function zScore(cl) {
+  const z = {80:1.282,81:1.311,82:1.341,83:1.372,84:1.405,85:1.440,86:1.476,87:1.514,88:1.555,89:1.598,
+    90:1.645,91:1.695,92:1.751,93:1.812,94:1.881,95:1.960,96:2.054,97:2.170,98:2.326,99:2.576};
+  return z[cl] || 1.96;
+}
+
+function compute() {
+  const cl = +document.getElementById('cl').value;
+  const moeTarget = +document.getElementById('moe').value / 100;
+  const nInput = +document.getElementById('bc').value;
+  const avgBeanWt = +document.getElementById('abw').value; // mg
+  const D = +document.getElementById('de').value;
+  const bvPct = +document.getElementById('bv').value / 100;
+  const p = +document.getElementById('dr').value / 100;
+  const A = +document.getElementById('ma').value / 100;
+
+  const z = zScore(cl);
+
+  // Bean count accuracy adjustment
+  // If sampling by weight and defective beans weigh less,
+  // the actual bean count is higher than assumed.
+  // Adjustment: n_weight = nInput * (1 + bvPct * p)
+  // Then design effect reduces effective n: n_eff = n_weight / D
+  const nWeightAdj = Math.round(nInput * (1 + bvPct * p));
+  const nEff = Math.round(nWeightAdj / D);
+
+  // Sampling
+  const sampVar = p * (1 - p) / nEff;
+  const sampStd = Math.sqrt(sampVar);
+  const sampMoE = z * sampStd;
+
+  // Tool RMSE (symmetric misclassification model)
+  const q = p * (2 * A - 1) + (1 - A);
+  const bias = (1 - A) * (1 - 2 * p);
+  const modelVar = Math.max(0, q * (1 - q) / nEff - p * (1 - p) / nEff);
+  const imgNoise = 0.003;
+  const toolRMSE = Math.sqrt(bias ** 2 + modelVar + imgNoise ** 2);
+
+  // Process MoE
+  const processMoE = z * Math.sqrt(sampVar + toolRMSE ** 2);
+  const pass = processMoE <= moeTarget;
+
+  // Display values
+  const approxWeightG = (nInput * avgBeanWt / 1000).toFixed(1);
+  document.getElementById('cl-val').textContent = cl + '%';
+  document.getElementById('moe-val').textContent = '\u00b1' + (+document.getElementById('moe').value).toFixed(1) + '%';
+  document.getElementById('bc-val').textContent = nInput.toLocaleString() + ' beans (~' + approxWeightG + 'g)';
+  document.getElementById('abw-val').textContent = avgBeanWt + ' mg';
+  document.getElementById('de-val').textContent = D.toFixed(1);
+  document.getElementById('bv-val').textContent = '\u00b1' + (+document.getElementById('bv').value) + '%';
+  document.getElementById('dr-val').textContent = (+document.getElementById('dr').value) + '%';
+  document.getElementById('ma-val').textContent = (+document.getElementById('ma').value) + '%';
+
+  // Verdict
+  const moePct = (processMoE * 100).toFixed(1);
+  document.getElementById('moe-num').textContent = '\u00b1' + moePct + '%';
+  document.getElementById('moe-num').className = 'num ' + (pass ? 'pass-text' : 'fail-text');
+  const tag = document.getElementById('verdict-tag');
+  tag.textContent = pass ? 'PASS' : 'FAIL';
+  tag.className = 'tag ' + (pass ? 'tag-pass' : 'tag-fail');
+
+  // Low accuracy warning
+  document.getElementById('accuracy-warning').style.display = A < 0.70 ? 'block' : 'none';
+
+  // Live formula
+  let nLine = `<span class="hl">n (input)</span> = ${nInput.toLocaleString()} beans`;
+  if (D > 1 || bvPct > 0) {
+    nLine += ` \u2192 <span class="hl">n (effective)</span> = <span class="val-hl">${nEff.toLocaleString()}</span>`;
+    const parts = [];
+    if (bvPct > 0) parts.push('wt.var \u00b1' + (bvPct*100).toFixed(0) + '%');
+    if (D > 1) parts.push('D=' + D.toFixed(1));
+    nLine += ` [${parts.join(', ')}]`;
+  }
+
+  document.getElementById('formula-live').innerHTML =
+    `<span class="hl">z</span> = <span class="val-hl">${z.toFixed(3)}</span> (${cl}% CI)<br>` +
+    nLine + `<br>` +
+    `<span class="hl">Sampling Var</span> = p(1\u2212p) / n_eff = ${(sampVar*10000).toFixed(2)} \u00D7 10\u207B\u2074<br>` +
+    `<span class="hl">Tool RMSE</span> = <span class="val-hl">${(toolRMSE*100).toFixed(2)}%</span> (bias: ${(Math.abs(bias)*100).toFixed(2)}%)<br>` +
+    `<span class="hl">Process MoE</span> = z \u00D7 \u221A(SampVar + ToolRMSE\u00B2) = <span class="val-hl">\u00b1${moePct}%</span>`;
+
+  // Budget bar
+  const target = moeTarget * 100;
+  const sampPctBar = Math.min((sampMoE * 100 / target) * 100, 100);
+  const toolPctBar = Math.min((toolRMSE * z * 100 / target) * 100, 100 - sampPctBar);
+  const remainPctBar = Math.max(0, 100 - sampPctBar - toolPctBar);
+  document.getElementById('budget-title').textContent = `Error Budget Allocation (of \u00b1${(moeTarget*100).toFixed(1)}% target)`;
+  document.getElementById('budget-bar').innerHTML =
+    `<div class="bar-segment" style="width:${sampPctBar}%;background:#3B82F6;color:#fff">${sampPctBar > 8 ? (sampMoE*100).toFixed(1)+'%' : ''}</div>` +
+    `<div class="bar-segment" style="width:${toolPctBar}%;background:var(--accent);color:#fff">${toolPctBar > 8 ? (toolRMSE*z*100).toFixed(1)+'%' : ''}</div>` +
+    `<div class="bar-segment" style="width:${remainPctBar}%;background:var(--surface2);color:var(--muted)">${remainPctBar > 10 ? 'headroom' : ''}</div>`;
+
+  // Breakdown
+  const bonMin = 574;
+  document.getElementById('breakdown').innerHTML = [
+    ['Input bean count', nInput.toLocaleString() + ' (~' + approxWeightG + 'g at ' + avgBeanWt + 'mg/bean)'],
+    ['Weight adjusted count', nWeightAdj.toLocaleString() + (bvPct > 0 ? ' (lighter defectives at \u00b1' + (bvPct*100).toFixed(0) + '%)' : ' (no adjustment)')],
+    ['Design effect (D)', D.toFixed(1) + (D > 1 ? ' \u2192 correlated sampling' : ' \u2192 random draw')],
+    ['Effective n', nEff.toLocaleString() + (nEff < bonMin ? ' \u26a0 below Bonferroni min (' + bonMin + ')' : '')],
+    ['z score (' + cl + '% CI)', z.toFixed(3)],
+    ['divider',''],
+    ['Sampling Std Dev', (sampStd*100).toFixed(2) + '%'],
+    ['Sampling MoE', '\u00b1' + (sampMoE*100).toFixed(2) + '%'],
+    ['divider',''],
+    ['Model Bias (1\u2212A)(1\u22122p)', (bias*100).toFixed(2) + '%'],
+    ['Model Variance (\u03C3)', (Math.sqrt(modelVar)*100).toFixed(2) + '%'],
+    ['Imaging Noise', '0.3%'],
+    ['Tool RMSE', (toolRMSE*100).toFixed(2) + '%'],
+    ['divider',''],
+    ['Process MoE', '\u00b1' + moePct + '%'],
+    ['Target MoE', '\u00b1' + (moeTarget*100).toFixed(1) + '%'],
+    ['Verdict', pass ? 'PASS' : 'FAIL'],
+  ].map(r => r[0] === 'divider' ? '<div class="divider"></div>' :
+    `<div class="breakdown-row"><span class="label">${r[0]}</span><span class="value ${r[0]==='Verdict' ? (pass?'pass-text':'fail-text') : ''} ${r[0]==='Effective n' && nEff < bonMin ? 'warn-text' : ''}">${r[1]}</span></div>`
+  ).join('');
+
+  // Matrix: bean count vs model accuracy
+  const matrixCounts = [
+    {n: 574, label: '34.4g (574)'},
+    {n: 833, label: '50g (833)'},
+    {n: 1850, label: '111g (1,850)'},
+    {n: 21533, label: '1,292g (21,533)'},
+  ];
+  const accs = [50, 90, 95, 98, 99];
+  const currentAcc = +document.getElementById('ma').value;
+
+  document.getElementById('matrix-title').textContent = `Tradeoff Matrix (p=${(p*100).toFixed(0)}%, ${cl}% CI, \u00b1${(moeTarget*100).toFixed(1)}% MoE, D=${D.toFixed(1)})`;
+
+  let html = '<tr><th>Sample \u2193 Acc. \u2192</th>' + accs.map(a => `<th>${a}%</th>`).join('') + '</tr>';
+  for (const mc of matrixCounts) {
+    const nEffM = Math.round((mc.n * (1 + bvPct * p)) / D);
+    const isCurrentRow = mc.n === nInput;
+    html += '<tr>';
+    html += `<td class="header-cell${isCurrentRow ? ' active-row' : ''}">${mc.label}</td>`;
+    for (const a of accs) {
+      const aa = a / 100;
+      const qq = p*(2*aa-1)+(1-aa);
+      const bb = (1-aa)*(1-2*p);
+      const mmv = Math.max(0, qq*(1-qq)/nEffM - p*(1-p)/nEffM);
+      const tr = Math.sqrt(bb**2 + mmv + 0.003**2);
+      const bd = z * Math.sqrt(p*(1-p)/nEffM + tr**2);
+      const ps = bd <= moeTarget;
+      const isActive = isCurrentRow && a === currentAcc;
+      html += `<td class="${ps ? 'pass' : 'fail'}" ${isActive ? 'style="outline:2px solid var(--accent);outline-offset:-2px"' : ''}>\u00b1${(bd*100).toFixed(1)}%</td>`;
+    }
+    html += '</tr>';
+  }
+}
+
+document.querySelectorAll('input').forEach(el => el.addEventListener('input', compute));
+compute();
+</script>
+
+</body>
+</html>
