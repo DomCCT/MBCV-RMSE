@@ -90,7 +90,7 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: v
 
 <div class="container">
   <h1>MBCV Process RMSE Calculator</h1>
-  <p class="subtitle">Total process error sensitivity analysis. All errors in absolute terms (percentage points).</p>
+  <p class="subtitle">Total process error sensitivity analysis &mdash; Bonferroni family-wise Z (K=3: sprout/food/feed). All errors in absolute terms (percentage points).</p>
 
   <div class="grid">
     <div class="panel">
@@ -131,17 +131,17 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: v
       <h2 class="section-sep">Lot &amp; Model</h2>
       <div class="control">
         <label>Assumed Defect Rate (p) <span class="val" id="dr-val">12%</span></label>
-        <input type="range" id="dr" min="1" max="50" step="1" value="12">
+        <input type="range" id="dr" min="0.1" max="50" step="0.1" value="12">
       </div>
       <p class="note" style="border:none; padding:0; font-size:0.75rem; color:var(--muted); margin-top:-0.5rem; margin-bottom:0.75rem">
-        The estimated true proportion of defective beans in the lot.
+        The estimated true proportion of defective beans in the lot. Supports sub-1% for high quality lots.
       </p>
       <div class="control">
         <label>Overall Model Accuracy <span class="val" id="ma-val">98%</span></label>
-        <input type="range" id="ma" min="50" max="99" step="1" value="98">
+        <input type="range" id="ma" min="50" max="99.9" step="0.1" value="98">
       </div>
       <p class="note" style="border:none; padding:0; font-size:0.75rem; color:var(--muted); margin-top:-0.5rem">
-        Weighted average classification accuracy across all defect types. Per defect accuracy varies by difficulty tier.
+        Weighted average classification accuracy across all defect types. Supports tenths precision (e.g. 98.5%).
       </p>
     </div>
 
@@ -188,10 +188,42 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: v
 </div>
 
 <script>
-function zScore(cl) {
-  const z = {80:1.282,81:1.311,82:1.341,83:1.372,84:1.405,85:1.440,86:1.476,87:1.514,88:1.555,89:1.598,
-    90:1.645,91:1.695,92:1.751,93:1.812,94:1.881,95:1.960,96:2.054,97:2.170,98:2.326,99:2.576};
-  return z[cl] || 1.96;
+// Standard normal quantile (Acklam's rational approximation)
+function qnorm(p) {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.3577518672690, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const pl = 0.02425, ph = 1 - pl;
+  let q, r;
+  if (p < pl) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= ph) {
+    q = p - 0.5; r = q*q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1-p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+            ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+}
+
+// Bonferroni-adjusted Z for K simultaneous grade categories
+// Family-wise: Z = qnorm(1 - alpha/(2*K))
+// Per-comparison: Z = qnorm(1 - alpha/2)
+const K_CATEGORIES = 3; // sprout / food / feed
+
+function zScoreBonferroni(cl) {
+  const alpha = 1 - cl / 100;
+  return qnorm(1 - alpha / (2 * K_CATEGORIES));
+}
+
+function zScorePerComparison(cl) {
+  const alpha = 1 - cl / 100;
+  return qnorm(1 - alpha / 2);
 }
 
 function compute() {
@@ -204,7 +236,8 @@ function compute() {
   const p = +document.getElementById('dr').value / 100;
   const A = +document.getElementById('ma').value / 100;
 
-  const z = zScore(cl);
+  const z = zScoreBonferroni(cl);
+  const zPC = zScorePerComparison(cl); // per-comparison for reference
 
   // Bean count accuracy adjustment
   // If sampling by weight and defective beans weigh less,
@@ -238,8 +271,8 @@ function compute() {
   document.getElementById('abw-val').textContent = avgBeanWt + ' mg';
   document.getElementById('de-val').textContent = D.toFixed(1);
   document.getElementById('bv-val').textContent = '\u00b1' + (+document.getElementById('bv').value) + '%';
-  document.getElementById('dr-val').textContent = (+document.getElementById('dr').value) + '%';
-  document.getElementById('ma-val').textContent = (+document.getElementById('ma').value) + '%';
+  document.getElementById('dr-val').textContent = parseFloat(document.getElementById('dr').value).toFixed(1) + '%';
+  document.getElementById('ma-val').textContent = parseFloat(document.getElementById('ma').value).toFixed(1) + '%';
 
   // Verdict
   const moePct = (processMoE * 100).toFixed(1);
@@ -263,7 +296,8 @@ function compute() {
   }
 
   document.getElementById('formula-live').innerHTML =
-    `<span class="hl">z</span> = <span class="val-hl">${z.toFixed(3)}</span> (${cl}% CI)<br>` +
+    `<span class="hl">z (family-wise, K=${K_CATEGORIES})</span> = <span class="val-hl">${z.toFixed(3)}</span> (${cl}% CI, Bonferroni)<br>` +
+    `<span class="hl">z (per-comparison)</span> = ${zPC.toFixed(3)} <span style="color:var(--muted);font-size:0.75rem">shown for reference</span><br>` +
     nLine + `<br>` +
     `<span class="hl">Sampling Var</span> = p(1\u2212p) / n_eff = ${(sampVar*10000).toFixed(2)} \u00D7 10\u207B\u2074<br>` +
     `<span class="hl">Tool RMSE</span> = <span class="val-hl">${(toolRMSE*100).toFixed(2)}%</span> (bias: ${(Math.abs(bias)*100).toFixed(2)}%)<br>` +
@@ -281,13 +315,13 @@ function compute() {
     `<div class="bar-segment" style="width:${remainPctBar}%;background:var(--surface2);color:var(--muted)">${remainPctBar > 10 ? 'headroom' : ''}</div>`;
 
   // Breakdown
-  const bonMin = 574;
+  const bonMin = Math.ceil(z * z * 0.25 / (moeTarget * moeTarget));
   document.getElementById('breakdown').innerHTML = [
     ['Input bean count', nInput.toLocaleString() + ' (~' + approxWeightG + 'g at ' + avgBeanWt + 'mg/bean)'],
     ['Weight adjusted count', nWeightAdj.toLocaleString() + (bvPct > 0 ? ' (lighter defectives at \u00b1' + (bvPct*100).toFixed(0) + '%)' : ' (no adjustment)')],
     ['Design effect (D)', D.toFixed(1) + (D > 1 ? ' \u2192 correlated sampling' : ' \u2192 random draw')],
     ['Effective n', nEff.toLocaleString() + (nEff < bonMin ? ' \u26a0 below Bonferroni min (' + bonMin + ')' : '')],
-    ['z score (' + cl + '% CI)', z.toFixed(3)],
+    ['z (Bonferroni, K=' + K_CATEGORIES + ', ' + cl + '% CI)', z.toFixed(3) + ' (per-comparison: ' + zPC.toFixed(3) + ')'],
     ['divider',''],
     ['Sampling Std Dev', (sampStd*100).toFixed(2) + '%'],
     ['Sampling MoE', '\u00b1' + (sampMoE*100).toFixed(2) + '%'],
@@ -311,8 +345,8 @@ function compute() {
     {n: 1850, label: '111g (1,850)'},
     {n: 21533, label: '1,292g (21,533)'},
   ];
-  const accs = [50, 90, 95, 98, 99];
-  const currentAcc = +document.getElementById('ma').value;
+  const accs = [50, 90, 95, 97, 98, 98.5, 99, 99.5];
+  const currentAcc = parseFloat(document.getElementById('ma').value);
 
   document.getElementById('matrix-title').textContent = `Tradeoff Matrix (p=${(p*100).toFixed(0)}%, ${cl}% CI, \u00b1${(moeTarget*100).toFixed(1)}% MoE, D=${D.toFixed(1)})`;
 
@@ -330,7 +364,7 @@ function compute() {
       const tr = Math.sqrt(bb**2 + mmv + 0.003**2);
       const bd = z * Math.sqrt(p*(1-p)/nEffM + tr**2);
       const ps = bd <= moeTarget;
-      const isActive = isCurrentRow && a === currentAcc;
+      const isActive = isCurrentRow && Math.abs(a - currentAcc) < 0.05;
       html += `<td class="${ps ? 'pass' : 'fail'}" ${isActive ? 'style="outline:2px solid var(--accent);outline-offset:-2px"' : ''}>\u00b1${(bd*100).toFixed(1)}%</td>`;
     }
     html += '</tr>';
